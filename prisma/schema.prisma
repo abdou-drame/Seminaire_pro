@@ -1,0 +1,602 @@
+// ====================================================
+// SEMINAIREPRO - DATABASE SCHEMA (Prisma ORM)
+// Version 1.0 (Phase 1 Deliverable)
+// ====================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum GlobalRole {
+  SUPER_ADMIN
+  ADMIN_FUNCTIONAL
+  PARTNER_MANAGER
+  FINANCIAL_MANAGER
+  SUPPORT_AGENT
+  MODERATOR
+  USER
+}
+
+enum OrgRole {
+  ORG_ADMIN
+  ORG_REQUESTER
+  ORG_LOGISTICS
+  ORG_FINANCE
+  ORG_APPROVER
+  ORG_VIEWER
+}
+
+enum HotelRole {
+  HOTEL_ADMIN
+  HOTEL_COMMERCIAL
+  HOTEL_RESERVATION
+  HOTEL_FINANCE
+  HOTEL_RECEPTION
+}
+
+enum AccountStatus {
+  PENDING_VALIDATION
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum EstablishmentType {
+  HOTEL
+  RESIDENCE_HOTELIERE
+  AUBERGE_PROFESSIONNELLE
+  CENTRE_CONFERENCE
+  SALLE_INDEPENDANTE
+  ESPACE_EVENEMENTIEL
+}
+
+enum RoomLayoutType {
+  THEATRE
+  CLASSROOM
+  U_SHAPE
+  BOARDROOM
+  BANQUET
+  COCKTAIL
+}
+
+enum RequestStatus {
+  DRAFT
+  SENT
+  IN_PROGRESS
+  EXPIRED
+  CLOSED
+}
+
+enum QuoteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum ReservationStatus {
+  DRAFT
+  PENDING_INTERNAL_APPROVAL
+  OPTION_HELD
+  CONFIRMED
+  DEPOSIT_PAID
+  FULLY_PAID
+  ACTIVITE_REALISEE
+  CANCELLED
+  CLOTUREE
+}
+
+enum PaymentMethod {
+  MOBILE_MONEY_WAVE
+  MOBILE_MONEY_ORANGE
+  MOBILE_MONEY_FREE
+  CREDIT_CARD
+  BANK_TRANSFER
+  CHECK
+  BILL_ON_ACCOUNT
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionTier {
+  GRATUITE
+  STANDARD
+  PROFESSIONNELLE
+  PREMIUM
+}
+
+enum DocumentType {
+  PRO_FORMA
+  FACTURE_DEFINITIVE
+  BON_DE_COMMANDE
+  BON_DE_RESERVATION
+  CONTRAT
+  RECU_PAIEMENT
+  ATTESTATION_SERVICE_FAIT
+}
+
+// ----------------------------------------------------
+// USERS & AUTHENTICATION
+// ----------------------------------------------------
+
+model User {
+  id               String        @id @default(uuid())
+  email            String        @unique
+  phone            String        @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  globalRole       GlobalRole    @default(USER)
+  status           AccountStatus @default(PENDING_VALIDATION)
+  twoFactorEnabled Boolean       @default(false)
+  twoFactorSecret  String?
+  lastLoginAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  organizationUsers OrganizationUser[]
+  establishmentUsers EstablishmentUser[]
+  auditLogs         AuditLog[]
+  sentMessages      Message[]
+  notifications     Notification[]
+  reviews           Review[]
+  approvals         ReservationApproval[]
+
+  @@map("users")
+}
+
+// ----------------------------------------------------
+// ORGANIZATIONS (CLIENTS)
+// ----------------------------------------------------
+
+model Organization {
+  id                   String        @id @default(uuid())
+  legalName            String
+  tradeName            String?
+  ninea                String?       @unique
+  rccm                 String?
+  address              String
+  city                 String
+  country              String        @default("Sénégal")
+  logoUrl              String?
+  status               AccountStatus @default(PENDING_VALIDATION)
+  approvalProcessActive Boolean      @default(false)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  users                OrganizationUser[]
+  eventRequests        EventRequest[]
+  reservations         Reservation[]
+
+  @@map("organizations")
+}
+
+model OrganizationUser {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgRole
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_users")
+}
+
+// ----------------------------------------------------
+// HOTELS & ESTABLISHMENTS (PROVIDERS)
+// ----------------------------------------------------
+
+model Establishment {
+  id                 String            @id @default(uuid())
+  name               String
+  type               EstablishmentType
+  standingStars      Int               @default(3)
+  ninea              String?           @unique
+  rccm               String?
+  description        String            @db.Text
+  address            String
+  city               String
+  region             String
+  country            String            @default("Sénégal")
+  latitude           Float?
+  longitude          Float?
+  phone              String
+  email              String
+  logoUrl            String?
+  coverImageUrl      String?
+  status             AccountStatus     @default(PENDING_VALIDATION)
+  subscriptionTier   SubscriptionTier  @default(GRATUITE)
+  cancellationPolicy String?           @db.Text
+  checkInTime        String?           @default("14:00")
+  checkOutTime       String?           @default("12:00")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  users              EstablishmentUser[]
+  meetingRooms       MeetingRoom[]
+  bedrooms           Bedroom[]
+  equipments         Equipment[]
+  cateringOptions    CateringOption[]
+  packages           Package[]
+  availabilityBlocks AvailabilityBlock[]
+  quotes             Quote[]
+  reservations       Reservation[]
+  reviews            Review[]
+  commissions        Commission[]
+
+  @@map("establishments")
+}
+
+model EstablishmentUser {
+  id              String        @id @default(uuid())
+  establishmentId String
+  userId          String
+  role            HotelRole
+  createdAt       DateTime      @default(now())
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([establishmentId, userId])
+  @@map("establishment_users")
+}
+
+// ----------------------------------------------------
+// INVENTORY: MEETING ROOMS, BEDROOMS & SERVICES
+// ----------------------------------------------------
+
+model MeetingRoom {
+  id              String        @id @default(uuid())
+  establishmentId String
+  name            String
+  areaSqm         Float
+  halfDayPriceCfa Decimal       @db.Decimal(12, 2)
+  fullDayPriceCfa Decimal       @db.Decimal(12, 2)
+  description     String?       @db.Text
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  layouts         RoomLayout[]
+  reservations    Reservation[]
+
+  @@map("meeting_rooms")
+}
+
+model RoomLayout {
+  id            String         @id @default(uuid())
+  meetingRoomId String
+  layoutType    RoomLayoutType
+  maxCapacity   Int
+
+  meetingRoom   MeetingRoom    @relation(fields: [meetingRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingRoomId, layoutType])
+  @@map("room_layouts")
+}
+
+model Bedroom {
+  id              String        @id @default(uuid())
+  establishmentId String
+  roomType        String
+  stockQuantity   Int
+  maxOccupancy    Int           @default(1)
+  pricePerNightCfa Decimal      @db.Decimal(12, 2)
+  description     String?       @db.Text
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@map("bedrooms")
+}
+
+model Equipment {
+  id              String        @id @default(uuid())
+  establishmentId String
+  name            String
+  unitPriceCfa    Decimal       @db.Decimal(12, 2)
+  isIncluded      Boolean       @default(false)
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@map("equipments")
+}
+
+model CateringOption {
+  id              String        @id @default(uuid())
+  establishmentId String
+  name            String
+  pricePerPersonCfa Decimal     @db.Decimal(12, 2)
+  description     String?       @db.Text
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@map("catering_options")
+}
+
+model Package {
+  id              String        @id @default(uuid())
+  establishmentId String
+  name            String
+  pricePerPersonCfa Decimal     @db.Decimal(12, 2)
+  description     String?       @db.Text
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@map("packages")
+}
+
+model AvailabilityBlock {
+  id              String        @id @default(uuid())
+  establishmentId String
+  meetingRoomId   String?
+  startDate       DateTime
+  endDate         DateTime
+  reason          String?
+  isBlocked       Boolean       @default(true)
+  priceMultiplier Float         @default(1.0)
+
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@map("availability_blocks")
+}
+
+// ----------------------------------------------------
+// EVENT REQUESTS (RFQs) & QUOTES (DEVIS)
+// ----------------------------------------------------
+
+model EventRequest {
+  id                String        @id @default(uuid())
+  referenceNumber   String        @unique
+  organizationId    String
+  title             String
+  eventType         String
+  startDate         DateTime
+  endDate           DateTime
+  participantCount  Int
+  bedroomCount      Int           @default(0)
+  budgetLimitCfa    Decimal?      @db.Decimal(12, 2)
+  preferredCity     String
+  status            RequestStatus @default(DRAFT)
+  responseDeadline  DateTime
+  specialRequests   String?       @db.Text
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  targets           EventRequestTarget[]
+  quotes            Quote[]
+  reservations      Reservation[]
+  messages          Message[]
+
+  @@map("event_requests")
+}
+
+model EventRequestTarget {
+  id              String        @id @default(uuid())
+  eventRequestId  String
+  establishmentId String
+  createdAt       DateTime      @default(now())
+
+  eventRequest    EventRequest  @relation(fields: [eventRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([eventRequestId, establishmentId])
+  @@map("event_request_targets")
+}
+
+model Quote {
+  id              String        @id @default(uuid())
+  quoteNumber     String        @unique
+  eventRequestId  String
+  establishmentId String
+  totalAmountCfa  Decimal       @db.Decimal(12, 2)
+  roomAmountCfa   Decimal       @db.Decimal(12, 2)
+  bedroomAmountCfa Decimal      @db.Decimal(12, 2)
+  cateringAmountCfa Decimal     @db.Decimal(12, 2)
+  discountCfa     Decimal       @default(0) @db.Decimal(12, 2)
+  validUntil      DateTime
+  status          QuoteStatus   @default(PENDING)
+  notes           String?       @db.Text
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  eventRequest    EventRequest  @relation(fields: [eventRequestId], references: [id], onDelete: Cascade)
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  reservations    Reservation[]
+
+  @@map("quotes")
+}
+
+// ----------------------------------------------------
+// RESERVATIONS & APPROVAL WORKFLOW
+// ----------------------------------------------------
+
+model Reservation {
+  id               String            @id @default(uuid())
+  bookingNumber    String            @unique
+  organizationId   String
+  establishmentId  String
+  eventRequestId   String
+  quoteId          String
+  meetingRoomId    String?
+  startDate        DateTime
+  endDate          DateTime
+  totalPriceCfa    Decimal           @db.Decimal(12, 2)
+  depositPriceCfa  Decimal           @db.Decimal(12, 2)
+  status           ReservationStatus @default(DRAFT)
+  optionExpiresAt  DateTime?
+  cancelledReason  String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  establishment    Establishment     @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  eventRequest     EventRequest      @relation(fields: [eventRequestId], references: [id], onDelete: Cascade)
+  quote            Quote             @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  meetingRoom      MeetingRoom?      @relation(fields: [meetingRoomId], references: [id])
+  approvals        ReservationApproval[]
+  invoices         Invoice[]
+  payments         Payment[]
+  commission       Commission?
+  review           Review?
+
+  @@map("reservations")
+}
+
+model ReservationApproval {
+  id            String      @id @default(uuid())
+  reservationId String
+  approverId    String
+  level         Int
+  action        String
+  comments      String?
+  createdAt     DateTime    @default(now())
+
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  approver      User        @relation(fields: [approverId], references: [id])
+
+  @@map("reservation_approvals")
+}
+
+// ----------------------------------------------------
+// BILLING, PAYMENTS & COMMISSIONS
+// ----------------------------------------------------
+
+model Invoice {
+  id            String       @id @default(uuid())
+  invoiceNumber String       @unique
+  reservationId String
+  type          DocumentType
+  amountHtCfa   Decimal      @db.Decimal(12, 2)
+  vatAmountCfa  Decimal      @db.Decimal(12, 2)
+  amountTtcCfa  Decimal      @db.Decimal(12, 2)
+  pdfUrl        String?
+  issuedAt      DateTime     @default(now())
+  dueDate       DateTime
+
+  reservation   Reservation  @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("invoices")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  transactionRef String       @unique
+  reservationId String
+  amountCfa     Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  providerRaw   String?       @db.Text
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+
+  reservation   Reservation   @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Commission {
+  id              String        @id @default(uuid())
+  reservationId   String        @unique
+  establishmentId String
+  ratePercentage  Float
+  amountCfa       Decimal       @db.Decimal(12, 2)
+  isPaidToPlatform Boolean      @default(false)
+  createdAt       DateTime      @default(now())
+
+  reservation     Reservation   @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@map("commissions")
+}
+
+// ----------------------------------------------------
+// MESSAGING, REVIEWS & AUDIT LOGS
+// ----------------------------------------------------
+
+model Message {
+  id             String       @id @default(uuid())
+  eventRequestId String
+  senderId       String
+  content        String       @db.Text
+  attachmentUrl  String?
+  createdAt      DateTime     @default(now())
+
+  eventRequest   EventRequest @relation(fields: [eventRequestId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  channel   String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Review {
+  id              String        @id @default(uuid())
+  reservationId   String        @unique
+  establishmentId String
+  userId          String
+  ratingGlobal    Float
+  ratingService   Int
+  ratingRoom      Int
+  ratingBedrooms  Int
+  ratingCatering  Int
+  ratingWifi      Int
+  ratingValue     Int
+  comment         String?       @db.Text
+  isModerated     Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  reservation     Reservation   @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  establishment   Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@map("reviews")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  action       String
+  entity       String
+  entityId     String?
+  ipAddress    String?
+  payloadBefore String? @db.Text
+  payloadAfter  String? @db.Text
+  createdAt    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
